@@ -115,7 +115,7 @@ pub async fn get_workspaces(
                     {
                         meta.pagination.total_pages
                     } else {
-                        max_depth - 1
+                        max_depth
                     };
 
                     // Get the next page and merge the result
