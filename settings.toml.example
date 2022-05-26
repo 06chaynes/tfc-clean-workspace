@@ -7,7 +7,7 @@ log = "info" # Optional with default 'warn'
 variables = true # Optional with default of `true`
 
 [repositories] # Required but can be left empty
-git_dir = "/path/to/git/repos" # Optional with default of `./git`
+git_dir = "./git_repos" # Optional with default of `./git_repos`
 
 [query] # Required but can be left empty
 name = "aws-" # Optional

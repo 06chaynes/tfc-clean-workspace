@@ -1,6 +1,6 @@
 /target
 .idea
 /http-cacache
-/repos
+/git_repos
 settings.toml
 report.json
