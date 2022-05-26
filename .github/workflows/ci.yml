@@ -52,7 +52,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Install libgit2
-        run: sudo apt-get install -y libgit2
+        run: sudo apt-get install -y git libgit2-dev
       - name: Checkout repository
         uses: actions/checkout@v2
       - name: Install Rust
