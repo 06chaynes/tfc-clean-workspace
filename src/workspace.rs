@@ -120,7 +120,7 @@ pub async fn get_workspaces(
 
                     // Get the next page and merge the result
                     for n in next_page..=num_pages {
-                        info!("Retrieving the next page of workspaces.");
+                        info!("Retrieving workspaces page {}.", &n);
                         url = Url::parse_with_params(
                             url.clone().as_str(),
                             &[("page[number]", &n.to_string())],
