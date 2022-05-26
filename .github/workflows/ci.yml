@@ -51,6 +51,8 @@ jobs:
           - macOS-latest
     runs-on: ${{ matrix.os }}
     steps:
+      - name: Install libgit2
+        run: apt-get install libgit2-dev
       - name: Checkout repository
         uses: actions/checkout@v2
       - name: Install Rust
