@@ -4,7 +4,7 @@ output = "production.json" # Optional with default 'results.json'
 log = "info" # Optional with default 'warn'
 
 [cleanup] # Required but can be left empty
-variables = true # Optional with default of `true`
+unlisted_variables = true # Optional with default of `true`
 missing_repositories = true # Optional with default of `true`
 
 [repositories] # Required but can be left empty

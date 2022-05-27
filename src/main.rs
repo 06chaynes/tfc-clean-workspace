@@ -1,6 +1,8 @@
 mod error;
 mod filter;
+mod parse;
 mod repo;
+mod report;
 mod settings;
 mod variable;
 mod workspace;
@@ -13,15 +15,11 @@ use http_cache_surf::{
 };
 use log::*;
 use miette::{IntoDiagnostic, WrapErr};
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use settings::Settings;
-use std::fs;
 use surf::Client;
 use surf_governor::GovernorMiddleware;
 use url::Url;
-use walkdir::{DirEntry, WalkDir};
-use workspace::Workspace;
+use walkdir::WalkDir;
 
 const BASE_URL: &str = "https://app.terraform.io/api/v2";
 
@@ -47,29 +45,11 @@ enum Commands {
     Apply,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct TestVariable {
-    pub variable: Option<Value>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Variable {
-    pub variable: Value,
-}
-
 fn build_governor() -> Result<GovernorMiddleware, AppError> {
     match GovernorMiddleware::per_second(30) {
         Ok(g) => Ok(g),
         Err(e) => Err(AppError::General(e.into_inner())),
     }
-}
-
-fn is_hidden(entry: &DirEntry) -> bool {
-    entry.file_name().to_str().map(|s| s.starts_with('.')).unwrap_or(false)
-}
-
-fn is_tf(entry: &DirEntry) -> bool {
-    entry.file_name().to_str().map(|s| s.ends_with("tf")).unwrap_or(false)
 }
 
 #[async_std::main]
@@ -102,6 +82,10 @@ async fn main() -> miette::Result<()> {
     match &cli.command {
         Commands::Plan => {
             info!("Start Plan Phase");
+            let mut report = report::Report {
+                query: Some(config.query.clone()),
+                ..Default::default()
+            };
             // Get the initial list of workspaces
             let workspaces =
                 workspace::get_workspaces(&config, client.clone()).await?;
@@ -117,9 +101,9 @@ async fn main() -> miette::Result<()> {
                 filter::variable(&mut workspaces_variables, &config)?;
             }
 
-            let mut missing_repos: Vec<Workspace> = vec![];
             info!("Cloning workspace repositories.");
             for entry in &workspaces_variables {
+                report.workspaces.push(entry.workspace.clone());
                 // Clone git repositories
                 if let Some(repo) = &entry.workspace.attributes.vcs_repo {
                     info!(
@@ -145,55 +129,21 @@ async fn main() -> miette::Result<()> {
                         url.clone(),
                         path.clone(),
                         &entry.workspace,
-                        &mut missing_repos,
+                        &mut report.missing_repositories,
                     ) {
                         Ok(_) => {}
                         Err(_e) => {}
                     };
                     info!("Parsing variable data.");
                     let walker = WalkDir::new(&path).into_iter();
-                    for file in walker
-                        .filter_entry(|e| !is_hidden(e))
-                        .filter_map(Result::ok)
-                        .filter(is_tf)
-                    {
-                        info!("Parsing file: {}", file.path().display());
-                        match hcl::from_str::<TestVariable>(
-                            &fs::read_to_string(file.path())
-                                .into_diagnostic()?,
-                        ) {
-                            Ok(v) => {
-                                info!("{:#?}", &v);
-                            }
-                            Err(_e) => {
-                                match hcl::from_str::<Variable>(
-                                    &fs::read_to_string(file.path())
-                                        .into_diagnostic()?,
-                                ) {
-                                    Ok(value) => {
-                                        for (key, value) in
-                                            value.variable.as_object().unwrap()
-                                        {
-                                            info!(
-                                                "{:#?} = {:#?}",
-                                                &key, &value
-                                            );
-                                        }
-                                    }
-                                    Err(e) => {
-                                        warn!(
-                                            "Error parsing file: {}",
-                                            file.path().display()
-                                        );
-                                        warn!("{:#?}", e);
-                                    }
-                                }
-                            }
-                        }
+                    let unlisted = parse::tf(&config, walker, entry)?;
+                    if let Some(u) = unlisted {
+                        report.unlisted_variables.push(u);
                     }
                 }
             }
-            dbg!(missing_repos);
+            info!("{:#?}", &report);
+            report::save(&config, report)?;
         }
         Commands::Apply => {
             dbg!("apply");

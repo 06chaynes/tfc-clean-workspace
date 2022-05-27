@@ -43,4 +43,8 @@ pub enum AppError {
         help("Oh Bother, something went walking the directory!")
     )]
     Walkdir(#[from] walkdir::Error),
+    /// std IO related errors
+    #[error(transparent)]
+    #[diagnostic(code(which_workspace::io), help("Dangit, IO issue!"))]
+    Io(#[from] std::io::Error),
 }
