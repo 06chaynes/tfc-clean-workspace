@@ -5,8 +5,6 @@ mod settings;
 mod variable;
 mod workspace;
 
-use std::{ffi::OsStr, fs, os::unix::prelude::OsStrExt};
-
 use clap::{Parser, Subcommand};
 use env_logger::Env;
 use error::AppError;
@@ -18,6 +16,7 @@ use miette::{IntoDiagnostic, WrapErr};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use settings::Settings;
+use std::fs;
 use surf::Client;
 use surf_governor::GovernorMiddleware;
 use url::Url;
@@ -70,7 +69,7 @@ fn is_hidden(entry: &DirEntry) -> bool {
 }
 
 fn is_tf(entry: &DirEntry) -> bool {
-    entry.path().extension() == Some(OsStr::from_bytes(b"tf"))
+    entry.file_name().to_str().map(|s| s.ends_with("tf")).unwrap_or(false)
 }
 
 #[async_std::main]
