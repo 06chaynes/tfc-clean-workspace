@@ -36,4 +36,11 @@ pub enum AppError {
         help("My bad, something went wrong with git!")
     )]
     Git(#[from] git2::Error),
+    /// Walkdir related errors
+    #[error(transparent)]
+    #[diagnostic(
+        code(which_workspace::walkdir),
+        help("Oh Bother, something went walking the directory!")
+    )]
+    Walkdir(#[from] walkdir::Error),
 }

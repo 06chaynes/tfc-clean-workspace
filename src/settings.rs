@@ -33,6 +33,7 @@ pub struct Query {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Cleanup {
     pub variables: bool,
+    pub missing_repositories: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -62,6 +63,7 @@ impl Settings {
             .set_default("pagination.max_depth", "1".to_string())?
             .set_default("pagination.page_size", "20".to_string())?
             .set_default("cleanup.variables", true)?
+            .set_default("cleanup.missing_repositories", true)?
             .set_default("repositories.git_dir", "./git_repos".to_string())?
             // Start off by merging in the "default" configuration file
             .add_source(File::with_name("settings.toml").required(false))

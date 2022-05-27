@@ -5,6 +5,7 @@ log = "info" # Optional with default 'warn'
 
 [cleanup] # Required but can be left empty
 variables = true # Optional with default of `true`
+missing_repositories = true # Optional with default of `true`
 
 [repositories] # Required but can be left empty
 git_dir = "./git_repos" # Optional with default of `./git_repos`

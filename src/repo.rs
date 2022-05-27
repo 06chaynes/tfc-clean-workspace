@@ -1,15 +1,16 @@
 use std::path::Path;
 
-use crate::{error::AppError, settings::Settings};
-use git2::{build::RepoBuilder, Repository};
+use crate::{error::AppError, workspace::Workspace};
+use git2::{build::RepoBuilder, ErrorCode, Repository};
 use git2_credentials::CredentialHandler;
 use log::*;
 use url::Url;
 
 pub fn clone(
-    config: &Settings,
     url: Url,
-    identifier: String,
+    path: String,
+    workspace: &Workspace,
+    missing_repos: &mut Vec<Workspace>,
 ) -> Result<(), AppError> {
     let mut cb = git2::RemoteCallbacks::new();
     let git_config = git2::Config::open_default().unwrap();
@@ -20,11 +21,6 @@ pub fn clone(
     let mut fo = git2::FetchOptions::new();
     fo.remote_callbacks(cb).update_fetchhead(true);
 
-    let mut base_dir = config.repositories.git_dir.clone();
-    if base_dir.ends_with('/') {
-        base_dir.pop();
-    }
-    let path = format!("{}/{}", base_dir, identifier);
     info!("Cloning repo: {} into {}", url.as_str(), &path);
     let path = Path::new(&path);
     if path.is_dir() {
@@ -43,7 +39,12 @@ pub fn clone(
             }
             Err(e) => {
                 error!("Open failed :(");
-                return Err(AppError::Git(e));
+                match e.code() {
+                    ErrorCode::NotFound => {
+                        missing_repos.push(workspace.clone());
+                    }
+                    _ => return Err(AppError::Git(e)),
+                }
             }
         }
     } else {

@@ -5,6 +5,8 @@ mod settings;
 mod variable;
 mod workspace;
 
+use std::{ffi::OsStr, fs, os::unix::prelude::OsStrExt};
+
 use clap::{Parser, Subcommand};
 use env_logger::Env;
 use error::AppError;
@@ -13,10 +15,14 @@ use http_cache_surf::{
 };
 use log::*;
 use miette::{IntoDiagnostic, WrapErr};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use settings::Settings;
 use surf::Client;
 use surf_governor::GovernorMiddleware;
 use url::Url;
+use walkdir::{DirEntry, WalkDir};
+use workspace::Workspace;
 
 const BASE_URL: &str = "https://app.terraform.io/api/v2";
 
@@ -42,11 +48,29 @@ enum Commands {
     Apply,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct TestVariable {
+    pub variable: Option<Value>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Variable {
+    pub variable: Value,
+}
+
 fn build_governor() -> Result<GovernorMiddleware, AppError> {
     match GovernorMiddleware::per_second(30) {
         Ok(g) => Ok(g),
         Err(e) => Err(AppError::General(e.into_inner())),
     }
+}
+
+fn is_hidden(entry: &DirEntry) -> bool {
+    entry.file_name().to_str().map(|s| s.starts_with(".")).unwrap_or(false)
+}
+
+fn is_tf(entry: &DirEntry) -> bool {
+    entry.path().extension() == Some(OsStr::from_bytes(b"tf"))
 }
 
 #[async_std::main]
@@ -83,37 +107,82 @@ async fn main() -> miette::Result<()> {
             let workspaces =
                 workspace::get_workspaces(&config, client.clone()).await?;
 
-            if config.cleanup.variables {
-                // Get the variables for each workspace
-                let mut workspaces_variables =
-                    workspace::get_workspaces_variables(
-                        &config, client, workspaces,
-                    )
-                    .await?;
-                // Filter the workspaces if query variables have been provided
-                if config.query.variables.is_some() {
-                    info!("Filtering workspaces with variable query.");
-                    filter::variable(&mut workspaces_variables, &config)?;
-                }
+            // Get the variables for each workspace
+            let mut workspaces_variables = workspace::get_workspaces_variables(
+                &config, client, workspaces,
+            )
+            .await?;
+            // Filter the workspaces if query variables have been provided
+            if config.query.variables.is_some() {
+                info!("Filtering workspaces with variable query.");
+                filter::variable(&mut workspaces_variables, &config)?;
+            }
 
-                info!("Cloning workspace repositories.");
-                for entry in workspaces_variables {
-                    // Clone git repositories
-                    if let Some(repo) = entry.workspace.attributes.vcs_repo {
-                        let url = Url::parse(&repo.repository_http_url)
-                            .into_diagnostic()
-                            .wrap_err("Failed to parse repository url")?;
-                        let id = match repo.identifier {
-                            Some(i) => i,
-                            None => {
-                                let segments = url.path_segments().unwrap();
-                                segments.last().unwrap().to_string()
+            let mut missing_repos: Vec<Workspace> = vec![];
+            info!("Cloning workspace repositories.");
+            for entry in &workspaces_variables {
+                // Clone git repositories
+                if let Some(repo) = &entry.workspace.attributes.vcs_repo {
+                    info!(
+                        "Repo detected for workspace: {}",
+                        &entry.workspace.attributes.name
+                    );
+                    let url = Url::parse(&repo.repository_http_url)
+                        .into_diagnostic()
+                        .wrap_err("Failed to parse repository url")?;
+                    let id = match repo.identifier.clone() {
+                        Some(i) => i,
+                        None => {
+                            let segments = url.path_segments().unwrap();
+                            segments.last().unwrap().to_string()
+                        }
+                    };
+                    let mut base_dir = config.repositories.git_dir.clone();
+                    if base_dir.ends_with('/') {
+                        base_dir.pop();
+                    }
+                    let path = format!("{}/{}", base_dir, &id);
+                    match repo::clone(
+                        url.clone(),
+                        path.clone(),
+                        &entry.workspace,
+                        &mut missing_repos,
+                    ) {
+                        Ok(_) => {}
+                        Err(_e) => {}
+                    };
+                    info!("Parsing variable data.");
+                    let walker = WalkDir::new(&path).into_iter();
+                    for file in walker
+                        .filter_entry(|e| !is_hidden(e))
+                        .filter_map(Result::ok)
+                        .filter(|e| is_tf(e))
+                    {
+                        info!("Parsing file: {}", file.path().display());
+                        match hcl::from_str::<TestVariable>(
+                            &fs::read_to_string(file.path())
+                                .into_diagnostic()?,
+                        ) {
+                            Ok(v) => {
+                                info!("{:#?}", &v);
                             }
-                        };
-                        repo::clone(&config, url, id)?;
+                            Err(_e) => {
+                                let value: Variable = hcl::from_str(
+                                    &fs::read_to_string(file.path())
+                                        .into_diagnostic()?,
+                                )
+                                .into_diagnostic()?;
+                                for (key, value) in
+                                    value.variable.as_object().unwrap()
+                                {
+                                    info!("{:#?} = {:#?}", &key, &value);
+                                }
+                            }
+                        }
                     }
                 }
             }
+            dbg!(missing_repos);
         }
         Commands::Apply => {
             dbg!("apply");
