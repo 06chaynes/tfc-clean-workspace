@@ -167,7 +167,7 @@ pub async fn get_workspaces_variables(
             workspace.attributes.name
         );
         let variables =
-            variable::get_variables(&workspace.id, &config, client.clone())
+            variable::get_variables(&workspace.id, config, client.clone())
                 .await?;
         info!("Successfully retrieved variables!");
         workspaces_variables.push(WorkspaceVariables { workspace, variables })

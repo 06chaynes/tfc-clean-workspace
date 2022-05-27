@@ -66,7 +66,7 @@ fn build_governor() -> Result<GovernorMiddleware, AppError> {
 }
 
 fn is_hidden(entry: &DirEntry) -> bool {
-    entry.file_name().to_str().map(|s| s.starts_with(".")).unwrap_or(false)
+    entry.file_name().to_str().map(|s| s.starts_with('.')).unwrap_or(false)
 }
 
 fn is_tf(entry: &DirEntry) -> bool {
@@ -156,7 +156,7 @@ async fn main() -> miette::Result<()> {
                     for file in walker
                         .filter_entry(|e| !is_hidden(e))
                         .filter_map(Result::ok)
-                        .filter(|e| is_tf(e))
+                        .filter(is_tf)
                     {
                         info!("Parsing file: {}", file.path().display());
                         match hcl::from_str::<TestVariable>(
