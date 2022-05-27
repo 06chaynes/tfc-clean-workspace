@@ -167,15 +167,27 @@ async fn main() -> miette::Result<()> {
                                 info!("{:#?}", &v);
                             }
                             Err(_e) => {
-                                let value: Variable = hcl::from_str(
+                                match hcl::from_str::<Variable>(
                                     &fs::read_to_string(file.path())
                                         .into_diagnostic()?,
-                                )
-                                .into_diagnostic()?;
-                                for (key, value) in
-                                    value.variable.as_object().unwrap()
-                                {
-                                    info!("{:#?} = {:#?}", &key, &value);
+                                ) {
+                                    Ok(value) => {
+                                        for (key, value) in
+                                            value.variable.as_object().unwrap()
+                                        {
+                                            info!(
+                                                "{:#?} = {:#?}",
+                                                &key, &value
+                                            );
+                                        }
+                                    }
+                                    Err(e) => {
+                                        warn!(
+                                            "Error parsing file: {}",
+                                            file.path().display()
+                                        );
+                                        warn!("{:#?}", e);
+                                    }
                                 }
                             }
                         }
